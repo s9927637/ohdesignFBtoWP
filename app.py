@@ -86,60 +86,51 @@ def create_wordpress_post(title, content, media_urls):
     return None
 
 # Webhook 接收 Facebook 貼文
-@app.route("/webhook", methods=["GET", "POST"])
+@app.route("/webhook", methods=["POST"])
 def facebook_webhook():
-    if request.method == "GET":
-        # Facebook webhook 驗證
-        VERIFY_TOKEN = "my_secure_token"
-        if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge"), 200
-        return "Invalid verification token", 403
-
-    if request.method == "POST":
-        # 接收 Facebook 貼文並處理
+    try:
         data = request.json
-        if "entry" in data:
-            for entry in data["entry"]:
-                for change in entry.get("changes", []):
-                    value = change.get("value", {})
-                    message = value.get("message", "")
-                    attachments = value.get("attachments", {}).get("data", [])
+        logging.info(f"Received Webhook Data: {data}")
 
-                    media_urls = []
-                    for media in attachments:
-                        media_type = media.get("type", "")
-                        media_url = None
+        if not data or "entry" not in data:
+            logging.warning("Invalid Webhook data received")
+            return jsonify({"status": "error", "message": "Invalid data"}), 400
 
-                        if media_type == "photo":
-                            media_url = media.get("media", {}).get("image", {}).get("src")
-                        elif media_type == "video":
-                            media_url = media.get("media", {}).get("source")  # Facebook 影片來源 key 為 `source`
+        for entry in data["entry"]:
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                message = value.get("message", "")
+                attachments = value.get("attachments", {}).get("data", [])
 
-                        if media_url:
-                            media_urls.append(media_url)
+                if not message:
+                    logging.warning("No message found in Webhook data")
+                    continue
 
-                    if message:
-                        title = message.split("\n")[0]  # 第一行作為標題
-                        content_lines = message.split("\n")[2:]  # 第三行開始作為內文
-                        content = "\n".join(content_lines) if content_lines else message
+                logging.info(f"Processing Facebook post: {message}")
 
-                        # 處理圖片和影片上傳
-                        wp_media_urls = []
-                        for url in media_urls:
-                            if "jpg" in url or "jpeg" in url or "png" in url:
-                                uploaded_url = upload_image_to_wordpress(url)
-                            elif "mp4" in url:
-                                uploaded_url = upload_video_to_wordpress(url)
-                            else:
-                                uploaded_url = None
+                # 圖片 / 影片處理
+                media_urls = []
+                for media in attachments:
+                    media_url = media.get("media", {}).get("image", {}).get("src") if media.get("type") == "photo" else media.get("media", {}).get("source")
 
-                            if uploaded_url:
-                                wp_media_urls.append(uploaded_url)
+                    if media_url:
+                        logging.info(f"Media found: {media_url}")
+                        media_urls.append(media_url)
 
-                        # 上傳完成後創建文章
-                        create_wordpress_post(title, content, wp_media_urls)
+                # 解析標題 & 內文
+                title = message.split("\n")[0]
+                content = "\n".join(message.split("\n")[2:]) if len(message.split("\n")) > 2 else message
+
+                # 發送至 WordPress
+                wp_media_urls = [upload_image_to_wordpress(url) if "jpg" in url or "png" in url else upload_video_to_wordpress(url) for url in media_urls]
+                wp_media_urls = list(filter(None, wp_media_urls))  # 移除 `None` 值
+
+                create_wordpress_post(title, content, wp_media_urls)
 
         return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logging.error(f"Error processing Webhook: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
