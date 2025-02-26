@@ -96,22 +96,25 @@ VERIFY_TOKEN = "my_secure_token"  # 這個 token 需要與 Facebook 開發者頁
 @app.route("/webhook", methods=["GET", "POST"])
 def verify_webhook():
     if request.method == "GET":
-        # Facebook 發送驗證請求時，需回傳 verify_token 與 challenge
-        verify_token = "my_secure_token"  # 使用你設置的 verify_token
+        # 記錄請求參數
+        app.logger.info(f"Request args: {request.args}")
+        
+        verify_token = "my_secure_token"
         hub_mode = request.args.get("hub.mode")
         hub_challenge = request.args.get("hub.challenge")
         hub_verify_token = request.args.get("hub.verify_token")
 
         if hub_mode == "subscribe" and hub_verify_token == verify_token:
-            return str(hub_challenge)  # 回傳 Facebook 的挑戰碼
+            return str(hub_challenge)  # 返回挑戰碼
         else:
-            return "Verification failed", 403  # 驗證失敗
+            return "Verification failed", 403
 
     elif request.method == "POST":
-        # 處理 POST 請求來自 Facebook 的消息
         data = request.json
-        # 在這裡處理 webhook 發送的實際數據
+        # 處理 POST 請求
+        app.logger.info(f"Received POST data: {data}")
         return "Event received", 200
+
 
 # Webhook 接收 Facebook 貼文
 @app.route("/webhook", methods=["POST"])
