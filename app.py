@@ -3,6 +3,7 @@ import time
 import requests
 from flask import Flask, request, jsonify
 from requests.auth import HTTPBasicAuth
+import logging  # 確保有引入 logging 以便於記錄
 
 app = Flask(__name__)
 
@@ -59,34 +60,34 @@ def upload_video_to_wordpress(video_url):
 # 發佈文章
 def create_wordpress_post(title, content, media_urls):
     try:
-    # 先處理換行符號，然後再放進 f-string
-    formatted_content = content.replace('\n', '<br>')
+        # 格式化內文
+        formatted_content = content.replace('\n', '<br>')
 
-    # 然後在 f-string 裡使用處理過的結果
-    post_content = f"<p>{formatted_content}</p><br>"
+        post_content = f"<p>{formatted_content}</p><br>"
 
-    for media_url in media_urls:
-        if media_url.endswith(".jpg") or media_url.endswith(".png"):
-            post_content += f'<img src="{media_url}" style="max-width:100%;" /><br>'
-        elif media_url.endswith(".mp4"):
-            post_content += f'<video controls style="max-width:100%;"><source src="{media_url}" type="video/mp4"></video><br>'
+        # 處理媒體
+        for media_url in media_urls:
+            if media_url.endswith(".jpg") or media_url.endswith(".png"):
+                post_content += f'<img src="{media_url}" style="max-width:100%;" /><br>'
+            elif media_url.endswith(".mp4"):
+                post_content += f'<video controls style="max-width:100%;"><source src="{media_url}" type="video/mp4"></video><br>'
 
-    post_data = {
-        "title": title,
-        "content": post_content,
-        "status": "publish"
-    }
+        post_data = {
+            "title": title,
+            "content": post_content,
+            "status": "publish"
+        }
 
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", json=post_data, auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD), headers=headers)
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", json=post_data, auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD), headers=headers)
 
-    if response.status_code == 201:
-        print(f"Post created: {response.json().get('link')}")
-        return response.json()
-    else:
-        print("Post creation failed:", response.text)
-except Exception as e:
-    print("Error creating post:", e)
+        if response.status_code == 201:
+            print(f"Post created: {response.json().get('link')}")
+            return response.json()
+        else:
+            print("Post creation failed:", response.text)
+    except Exception as e:
+        print("Error creating post:", e)
     return None
 
 # Webhook 接收 Facebook 貼文
