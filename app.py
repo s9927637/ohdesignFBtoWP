@@ -71,7 +71,7 @@ def facebook_webhook():
 # Facebook Webhook 驗證
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
-    VERIFY_TOKEN = "your_verify_token"
+    VERIFY_TOKEN = "my_secure_token"
     if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
         return request.args.get("hub.challenge"), 200
     return "Invalid verification token", 403
