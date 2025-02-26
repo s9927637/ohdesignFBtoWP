@@ -15,11 +15,15 @@ WP_PASSWORD = os.getenv("WP_PASSWORD")  # WordPress 應用程式密碼
 # WordPress 上傳圖片
 def upload_image_to_wordpress(image_url):
     try:
-        image_data = requests.get(image_url).content
+        response = requests.get(image_url)
+        if response.status_code != 200:
+            print(f"Failed to fetch image: {image_url}")
+            return None
+
         filename = f"fb_image_{int(time.time())}.jpg"
         media_endpoint = f"{WP_URL}/wp-json/wp/v2/media"
 
-        files = {'file': (filename, image_data, 'image/jpeg')}
+        files = {'file': (filename, response.content, 'image/jpeg')}
         response = requests.post(media_endpoint, auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD), files=files)
 
         if response.status_code == 201:
@@ -33,11 +37,15 @@ def upload_image_to_wordpress(image_url):
 # WordPress 上傳影片
 def upload_video_to_wordpress(video_url):
     try:
-        video_data = requests.get(video_url).content
+        response = requests.get(video_url)
+        if response.status_code != 200:
+            print(f"Failed to fetch video: {video_url}")
+            return None
+
         filename = f"fb_video_{int(time.time())}.mp4"
         media_endpoint = f"{WP_URL}/wp-json/wp/v2/media"
 
-        files = {'file': (filename, video_data, 'video/mp4')}
+        files = {'file': (filename, response.content, 'video/mp4')}
         response = requests.post(media_endpoint, auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD), files=files)
 
         if response.status_code == 201:
@@ -51,9 +59,13 @@ def upload_video_to_wordpress(video_url):
 # 發佈文章
 def create_wordpress_post(title, content, media_urls):
     try:
-        post_content = f"{content}<br><br>"
+        post_content = f"<p>{content.replace('\n', '<br>')}</p><br>"
+
         for media_url in media_urls:
-            post_content += f'<img src="{media_url}" /><br>' if media_url else ""
+            if media_url.endswith(".jpg") or media_url.endswith(".png"):
+                post_content += f'<img src="{media_url}" style="max-width:100%;" /><br>'
+            elif media_url.endswith(".mp4"):
+                post_content += f'<video controls style="max-width:100%;"><source src="{media_url}" type="video/mp4"></video><br>'
 
         post_data = {
             "title": title,
@@ -65,6 +77,7 @@ def create_wordpress_post(title, content, media_urls):
         response = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", json=post_data, auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD), headers=headers)
 
         if response.status_code == 201:
+            print(f"Post created: {response.json().get('link')}")
             return response.json()
         else:
             print("Post creation failed:", response.text)
@@ -87,28 +100,35 @@ def facebook_webhook():
         data = request.json
         if "entry" in data:
             for entry in data["entry"]:
-                for post in entry.get("changes", []):
-                    if "value" in post and "message" in post["value"]:
-                        message = post["value"]["message"]
-                        attachments = post["value"].get("attachments", {}).get("data", [])
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    message = value.get("message", "")
+                    attachments = value.get("attachments", {}).get("data", [])
 
-                        media_urls = []
-                        for media in attachments:
-                            media_type = media.get("type", "")
-                            media_url = media.get("media", {}).get("image", {}).get("src") if media_type == "photo" else \
-                                        media.get("media", {}).get("video", {}).get("src") if media_type == "video" else None
-                            if media_url:
-                                media_urls.append(media_url)
+                    media_urls = []
+                    for media in attachments:
+                        media_type = media.get("type", "")
+                        media_url = None
 
+                        if media_type == "photo":
+                            media_url = media.get("media", {}).get("image", {}).get("src")
+                        elif media_type == "video":
+                            media_url = media.get("media", {}).get("source")  # Facebook 影片來源 key 為 `source`
+
+                        if media_url:
+                            media_urls.append(media_url)
+
+                    if message:
                         title = message.split("\n")[0]  # 第一行作為標題
-                        content = "\n".join(message.split("\n")[2:])  # 第三行開始作為內文
+                        content_lines = message.split("\n")[2:]  # 第三行開始作為內文
+                        content = "\n".join(content_lines) if content_lines else message
 
                         # 處理圖片和影片上傳
                         wp_media_urls = []
                         for url in media_urls:
-                            if url.endswith(".jpg") or url.endswith(".jpeg"):
+                            if "jpg" in url or "jpeg" in url or "png" in url:
                                 uploaded_url = upload_image_to_wordpress(url)
-                            elif url.endswith(".mp4"):
+                            elif "mp4" in url:
                                 uploaded_url = upload_video_to_wordpress(url)
                             else:
                                 uploaded_url = None
