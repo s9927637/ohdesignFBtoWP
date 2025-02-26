@@ -59,7 +59,7 @@ def upload_video_to_wordpress(video_url):
 # 發佈文章
 def create_wordpress_post(title, content, media_urls):
     try:
-        post_content = f"<p>{content.replace('\n', '<br>')}</p><br>"
+        f"Some text {variable.replace('\n', ' ')} more text"
 
         for media_url in media_urls:
             if media_url.endswith(".jpg") or media_url.endswith(".png"):
