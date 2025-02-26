@@ -1,6 +1,8 @@
 import os
+import time
 import requests
 from flask import Flask, request, jsonify
+from requests.auth import HTTPBasicAuth
 
 app = Flask(__name__)
 
@@ -13,16 +15,17 @@ WP_PASSWORD = os.getenv("WP_PASSWORD")  # WordPress 應用程式密碼
 # WordPress 上傳圖片
 def upload_to_wordpress(image_url):
     image_data = requests.get(image_url).content
-    filename = f"fb_image_{int(os.times()[4])}.jpg"
+    filename = f"fb_image_{int(time.time())}.jpg"
     media_endpoint = f"{WP_URL}/wp-json/wp/v2/media"
 
     headers = {
-        "Authorization": f"Basic {requests.auth._basic_auth_str(WP_USERNAME, WP_PASSWORD)}",
+        "Authorization": HTTPBasicAuth(WP_USERNAME, WP_PASSWORD),
         "Content-Disposition": f"attachment; filename={filename}",
         "Content-Type": "image/jpeg",
     }
     
-    response = requests.post(media_endpoint, headers=headers, files={"file": image_data})
+    files = {'file': (filename, image_data, 'image/jpeg')}
+    response = requests.post(media_endpoint, headers=headers, files=files)
     if response.status_code == 201:
         return response.json()["source_url"]
     return None
@@ -40,7 +43,7 @@ def create_wordpress_post(title, content, media_urls):
     }
 
     headers = {
-        "Authorization": f"Basic {requests.auth._basic_auth_str(WP_USERNAME, WP_PASSWORD)}",
+        "Authorization": HTTPBasicAuth(WP_USERNAME, WP_PASSWORD),
         "Content-Type": "application/json",
     }
     
@@ -48,33 +51,32 @@ def create_wordpress_post(title, content, media_urls):
     return response.status_code == 201
 
 # Webhook 接收 Facebook 貼文
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def facebook_webhook():
-    data = request.json
+    if request.method == "GET":
+        # Facebook webhook 驗證
+        VERIFY_TOKEN = "my_secure_token"
+        if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge"), 200
+        return "Invalid verification token", 403
 
-    # 確認事件是來自粉絲專頁貼文
-    if "entry" in data:
-        for entry in data["entry"]:
-            for post in entry.get("changes", []):
-                if "value" in post and "message" in post["value"]:
-                    message = post["value"]["message"]
-                    media_urls = [media["media"]["image"]["src"] for media in post["value"].get("attachments", []) if "image" in media["media"]]
+    if request.method == "POST":
+        # 接收 Facebook 貼文並處理
+        data = request.json
+        if "entry" in data:
+            for entry in data["entry"]:
+                for post in entry.get("changes", []):
+                    if "value" in post and "message" in post["value"]:
+                        message = post["value"]["message"]
+                        media_urls = [media["media"]["image"]["src"] for media in post["value"].get("attachments", []) if "image" in media["media"]]
 
-                    title = message.split("\n")[0]  # 第一行作為標題
-                    content = "\n".join(message.split("\n")[2:])  # 第三行開始作為內文
+                        title = message.split("\n")[0]  # 第一行作為標題
+                        content = "\n".join(message.split("\n")[2:])  # 第三行開始作為內文
 
-                    wp_media_urls = [upload_to_wordpress(url) for url in media_urls if upload_to_wordpress(url)]
-                    create_wordpress_post(title, content, wp_media_urls)
+                        wp_media_urls = [url for url in (upload_to_wordpress(url) for url in media_urls) if url]
+                        create_wordpress_post(title, content, wp_media_urls)
 
-    return jsonify({"status": "ok"}), 200
-
-# Facebook Webhook 驗證
-@app.route("/webhook", methods=["GET"])
-def verify_webhook():
-    VERIFY_TOKEN = "my_secure_token"
-    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
-        return request.args.get("hub.challenge"), 200
-    return "Invalid verification token", 403
+        return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
