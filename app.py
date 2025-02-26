@@ -117,55 +117,72 @@ def verify_webhook():
 
 
 # Webhook 接收 Facebook 貼文
-@app.route("/webhook", methods=["POST"])
-def facebook_webhook():
-    try:
-        data = request.json
-        logging.info(f"Received Webhook Data: {data}")  # 日誌記錄接收到的數據
+@app.route("/webhook", methods=["GET", "POST"])
+def webhook():
+    if request.method == "GET":
+        # Facebook Webhook 驗證
+        verify_token = "my_secure_token"
+        hub_mode = request.args.get("hub.mode")
+        hub_challenge = request.args.get("hub.challenge")
+        hub_verify_token = request.args.get("hub.verify_token")
 
-        if not data or "entry" not in data:
-            logging.warning("Invalid Webhook data received")  # 如果數據無效，記錄警告
-            return jsonify({"status": "error", "message": "Invalid data"}), 400
+        if hub_mode == "subscribe" and hub_verify_token == verify_token:
+            return str(hub_challenge)
+        else:
+            return "Verification failed", 403
 
-        for entry in data["entry"]:
-            for change in entry.get("changes", []):
-                value = change.get("value", {})
-                message = value.get("message", "")
-                attachments = value.get("attachments", {}).get("data", [])
+    elif request.method == "POST":
+        try:
+            data = request.json
+            logging.info(f"Received Webhook Data: {data}")
 
-                if not message:
-                    logging.warning("No message found in Webhook data")  # 如果沒有消息，記錄警告
-                    continue
+            if not data or "entry" not in data:
+                logging.warning("Invalid Webhook data received")
+                return jsonify({"status": "error", "message": "Invalid data"}), 400
 
-                logging.info(f"Processing Facebook post: {message}")  # 打印處理的貼文
+            for entry in data["entry"]:
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    message = value.get("message", "")
+                    attachments = value.get("attachments", {}).get("data", [])
 
-                # 圖片 / 影片處理
-                media_urls = []
-                for media in attachments:
-                    if media.get("type") == "photo":
-                        media_url = media.get("media", {}).get("image", {}).get("src")
-                    else:
-                        media_url = media.get("media", {}).get("source")
+                    if not message:
+                        logging.warning("No message found in Webhook data")
+                        continue
 
-                    if media_url:
-                        logging.info(f"Media found: {media_url}")  # 打印媒體鏈接
-                        media_urls.append(media_url)
-                
-                # 解析標題 & 內文
-                title = message.split("\n")[0]  # 第一行為標題
-                content = "\n".join(message.split("\n")[2:]) if len(message.split("\n")) > 2 else message  # 從第三行開始為內文
+                    logging.info(f"Processing Facebook post: {message}")
 
-                # 發送至 WordPress
-                wp_media_urls = [upload_image_to_wordpress(url) if "jpg" in url or "png" in url else upload_video_to_wordpress(url) for url in media_urls]
-                wp_media_urls = list(filter(None, wp_media_urls))  # 移除 `None` 值
+                    # 圖片 / 影片處理
+                    media_urls = []
+                    for media in attachments:
+                        if media.get("type") == "photo":
+                            media_url = media.get("media", {}).get("image", {}).get("src")
+                        else:
+                            media_url = media.get("media", {}).get("source")
 
-                # 創建 WordPress 文章
-                create_wordpress_post(title, content, wp_media_urls)
+                        if media_url:
+                            logging.info(f"Media found: {media_url}")
+                            media_urls.append(media_url)
 
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        logging.error(f"Error processing Webhook: {str(e)}", exc_info=True)  # 錯誤日誌
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
+                    # 解析標題 & 內文
+                    title = message.split("\n")[0]
+                    content = "\n".join(message.split("\n")[2:]) if len(message.split("\n")) > 2 else message
+
+                    # 發送至 WordPress
+                    wp_media_urls = [
+                        upload_image_to_wordpress(url) if "jpg" in url or "png" in url else upload_video_to_wordpress(url)
+                        for url in media_urls
+                    ]
+                    wp_media_urls = list(filter(None, wp_media_urls))
+
+                    # 創建 WordPress 文章
+                    create_wordpress_post(title, content, wp_media_urls)
+
+            return jsonify({"status": "ok"}), 200
+        except Exception as e:
+            logging.error(f"Error processing Webhook: {str(e)}", exc_info=True)
+            return jsonify({"status": "error", "message": "Internal server error"}), 500
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))  # 默認端口為 5000，如果未設置環境變數
