@@ -4,6 +4,7 @@ import requests
 from flask import Flask, request, jsonify
 from requests.auth import HTTPBasicAuth
 import logging  # 確保有引入 logging 以便於記錄
+import json 
 
 app = Flask(__name__)
 
@@ -176,21 +177,32 @@ def handle_video(video_url):
     # 你可以下載影片，並將其上傳到 WordPress 媒體庫
     # 這裡的實現取決於你的需求
 
+# 你的驗證 token
+VERIFY_TOKEN = 'my_secure_token'
 
 # Webhook 接收 Facebook 貼文
-@app.route("/webhook", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def webhook():
-    if request.method == "GET":
-        # 驗證 Facebook 發來的請求
-        hub_mode = request.args.get("hub.mode")
-        hub_challenge = request.args.get("hub.challenge")
-        hub_verify_token = request.args.get("hub.verify_token")
+    # Facebook 發送的驗證請求處理
+    if request.method == 'GET':
+        # 從 Facebook 請求中提取參數
+        mode = request.args.get('hub.mode')
+        challenge = request.args.get('hub.challenge')
+        verify_token = request.args.get('hub.verify_token')
 
-        if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
-            return str(hub_challenge)  # 回傳 Facebook 發來的 challenge
+        # 檢查 verify_token 是否匹配
+        if mode == 'subscribe' and verify_token == VERIFY_TOKEN:
+            logging.info("Webhook verified successfully.")
+            return challenge  # 返回 hub.challenge 完成驗證
         else:
+            logging.error("Verification failed. Invalid token.")
             return "Verification failed", 403
 
+    elif request.method == 'POST':
+        # 處理 POST 請求（Facebook 發送的事件）
+        data = request.get_json()
+        logging.info("Received data: %s", data)
+        return 'EVENT_RECEIVED', 200
     elif request.method == "POST":
         try:
             data = request.json
