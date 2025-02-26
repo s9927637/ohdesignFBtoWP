@@ -59,7 +59,12 @@ def upload_video_to_wordpress(video_url):
 # 發佈文章
 def create_wordpress_post(title, content, media_urls):
     try:
-        f"Some text {variable.replace('\n', ' ')} more text"
+        # 先處理換行符號，然後再放進 f-string
+formatted_content = content.replace('\n', '<br>')
+
+# 然後在 f-string 裡使用處理過的結果
+post_content = f"<p>{formatted_content}</p><br>"
+
 
         for media_url in media_urls:
             if media_url.endswith(".jpg") or media_url.endswith(".png"):
