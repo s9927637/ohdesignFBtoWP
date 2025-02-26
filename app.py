@@ -90,30 +90,91 @@ def create_wordpress_post(title, content, media_urls):
         print("Error creating post:", e)
     return None
 
-# 驗證 Webhook 的 token
-VERIFY_TOKEN = "my_secure_token"  # 這個 token 需要與 Facebook 開發者頁面中的設定一致
-
 @app.route("/webhook", methods=["GET", "POST"])
 def verify_webhook():
     if request.method == "GET":
-        # 記錄請求參數
-        app.logger.info(f"Request args: {request.args}")
-        
-        verify_token = "my_secure_token"
         hub_mode = request.args.get("hub.mode")
         hub_challenge = request.args.get("hub.challenge")
         hub_verify_token = request.args.get("hub.verify_token")
 
-        if hub_mode == "subscribe" and hub_verify_token == verify_token:
-            return str(hub_challenge)  # 返回挑戰碼
+        # 驗證 Facebook 請求
+        if hub_mode == "subscribe" and hub_verify_token == "my_secure_token":
+            return str(hub_challenge)  # 返回 challenge 以完成驗證
         else:
             return "Verification failed", 403
 
-    elif request.method == "POST":
-        data = request.json
-        # 處理 POST 請求
-        app.logger.info(f"Received POST data: {data}")
-        return "Event received", 200
+    if request.method == "POST":
+        # 處理從 Facebook 來的事件
+        data = request.get_json()
+        app.logger.info(f"Received data: {json.dumps(data, indent=2)}")
+
+        # 檢查是否是公開貼文事件
+        if "entry" in data:
+            for entry in data["entry"]:
+                for messaging_event in entry.get("messaging", []):
+                    if "message" in messaging_event:
+                        message = messaging_event["message"]
+                        # 這裡處理貼文內容
+                        handle_facebook_post(message)
+
+        return jsonify({"status": "ok"}), 200
+
+def handle_facebook_post(message):
+    # 假設這裡你要處理的是貼文內容，可以是圖片、文字等
+    text = message.get("text", "")
+    attachments = message.get("attachments", [])
+
+    # 根據需要處理貼文內容並同步到 WordPress
+    if text:
+        # 做一些處理，然後將它發送到 WordPress
+        post_to_wordpress(text)
+    
+    # 如果有圖片或影片，處理它們
+    if attachments:
+        for attachment in attachments:
+            if attachment["type"] == "image":
+                image_url = attachment["payload"]["url"]
+                # 下載圖片並處理
+                handle_image(image_url)
+            elif attachment["type"] == "video":
+                video_url = attachment["payload"]["url"]
+                # 下載影片並處理
+                handle_video(video_url)
+
+def post_to_wordpress(text):
+    wordpress_url = "https://ohdesign.com/wp-json/wp/v2/posts"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    data = {
+        "title": "Facebook Post Title",  # 你可以從訊息中獲取標題
+        "content": text,  # 這裡發送貼文的文字內容
+        "status": "publish"  # 發佈狀態
+    }
+    
+    # 使用 Basic Auth 進行身份驗證
+    response = requests.post(
+        wordpress_url, 
+        headers=headers, 
+        json=data, 
+        auth=HTTPBasicAuth(WP_USERNAME, WP_PASSWORD)  # 使用 WordPress 用戶名和應用程式密碼
+    )
+    
+    if response.status_code == 201:
+        app.logger.info("Successfully posted to WordPress")
+    else:
+        app.logger.error(f"Failed to post to WordPress: {response.status_code}, {response.text}")
+def handle_image(image_url):
+    # 下載圖片並處理
+    app.logger.info(f"Handling image: {image_url}")
+    # 你可以下載圖片，並將其上傳到 WordPress 媒體庫
+    # 這裡的實現取決於你的需求
+
+def handle_video(video_url):
+    # 下載影片並處理
+    app.logger.info(f"Handling video: {video_url}")
+    # 你可以下載影片，並將其上傳到 WordPress 媒體庫
+    # 這裡的實現取決於你的需求
 
 
 # Webhook 接收 Facebook 貼文
