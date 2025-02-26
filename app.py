@@ -141,7 +141,6 @@ def facebook_webhook():
         logging.error(f"Error processing Webhook: {str(e)}", exc_info=True)  # 錯誤日誌
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    port = int(os.getenv("PORT", 5000))  # 默認端口為 5000，如果未設置環境變數
+    app.run(host="0.0.0.0", port=port)  # 確保監聽所有地址
