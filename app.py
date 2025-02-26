@@ -90,6 +90,19 @@ def create_wordpress_post(title, content, media_urls):
         print("Error creating post:", e)
     return None
 
+# 驗證 Webhook 的 token
+VERIFY_TOKEN = "my_secure_token"  # 這個 token 需要與 Facebook 開發者頁面中的設定一致
+
+@app.route("/webhook", methods=["GET"])
+def verify_webhook():
+    # Facebook Webhook 驗證邏輯
+    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
+        # 驗證成功
+        return request.args.get("hub.challenge"), 200
+    else:
+        # 驗證失敗
+        return "Verification failed", 403
+
 # Webhook 接收 Facebook 貼文
 @app.route("/webhook", methods=["POST"])
 def facebook_webhook():
