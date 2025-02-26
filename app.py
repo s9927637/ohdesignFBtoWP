@@ -120,14 +120,13 @@ def verify_webhook():
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
-        # Facebook Webhook 驗證
-        verify_token = "my_secure_token"
+        # 驗證 Facebook 發來的請求
         hub_mode = request.args.get("hub.mode")
         hub_challenge = request.args.get("hub.challenge")
         hub_verify_token = request.args.get("hub.verify_token")
 
-        if hub_mode == "subscribe" and hub_verify_token == verify_token:
-            return str(hub_challenge)
+        if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+            return str(hub_challenge)  # 回傳 Facebook 發來的 challenge
         else:
             return "Verification failed", 403
 
